@@ -15,7 +15,9 @@ RUN apt-get update -y && apt-get install -y \
 	screen \
 	libxslt1.1 \
 	python-software-properties \
-	wget && \
+	wget \
+	openssh-server \
+	fail2ban && \
 apt-get remove xscreensaver -y && \
 apt-get autoclean && apt-get autoremove --purge -y && \
 rm -rf /var/lib/apt/lists/* /var/cache/apt/* /tmp/* /var/tmp/*
@@ -24,4 +26,15 @@ rm -rf /var/lib/apt/lists/* /var/cache/apt/* /tmp/* /var/tmp/*
 RUN wget -O tigerVNCserver_1.7.1-ubuntu-amd64.deb https://bintray.com/tigervnc/stable/download_file?file_path=ubuntu-16.04LTS%2Famd64%2Ftigervncserver_1.7.1-1ubuntu1_amd64.deb && dpkg -i tigerVNCserver_1.7.1-ubuntu-amd64.deb && \
 rm tigerVNCserver_1.7.1-ubuntu-amd64.deb
 
-CMD java -version
+#install node v7
+RUN curl -sL https://deb.nodesource.com/setup_7.x | bash - && \
+apt-get install nodejs -y && \
+apt-get autoclean && apt-get autoremove --purge -y && \
+rm -rf /var/lib/apt/lists/* /var/cache/apt/* /tmp/* /var/tmp/*
+
+#install node libraries
+RUN npm install chalk system-sleep robotjs
+
+CMD java -version && \
+node -v && \
+sshd -h
