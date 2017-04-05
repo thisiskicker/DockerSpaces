@@ -37,84 +37,12 @@ rm -rf /var/lib/apt/lists/* /var/cache/apt/* /tmp/* /var/tmp/*
 RUN npm install chalk system-sleep robotjs
 
 #change ssh server config to make it more secure (makes ssh run on port 6666, no root login, & ssh key login)
-RUN touch /etc/ssh/sshd_config && \
-echo "Port 6666 \
-Protocol 2 \
-HostKey /etc/ssh/ssh_host_rsa_key \
-HostKey /etc/ssh/ssh_host_dsa_key \
-HostKey /etc/ssh/ssh_host_ecdsa_key \
-HostKey /etc/ssh/ssh_host_ed25519_key \
-UsePrivilegeSeparation yes \
-KeyRegenerationInterval 3600 \
-ServerKeyBits 1024 \
-SyslogFacility AUTH \
-LogLevel INFO \
-LoginGraceTime 120 \
-PermitRootLogin no \
-StrictModes yes \
-RSAAuthentication yes \
-PubkeyAuthentication yes \
-IgnoreRhosts yes \
-RhostsRSAAuthentication no \
-PermitEmptyPasswords no \
-ChallengeResponseAuthentication no \
-X11Forwarding yes \
-X11DisplayOffset 10 \
-PrintMotd no \
-PrintLastLog yes \
-TCPKeepAlive yes \
-AcceptEnv LANG LC_* \
-Subsystem sftp /usr/lib/openssh/sftp-server \
-UsePAM yes" > /etc/ssh/sshd_config && \
-service ssh restart
+ADD /config/sshd_config /etc/ssh/
+RUN service ssh restart
 
 #configure fail2ban to watch ssh on port 6666
-RUN echo '[INCLUDES] \
-before = paths-debian.conf \
-[DEFAULT] \
-ignoreip = 127.0.0.1/8 \
-ignorecommand = \
-bantime  = 600 \
-findtime  = 600 \
-maxretry = 5 \
-backend = auto \
-usedns = warn \
-logencoding = auto \
-enabled = false \
-filter = %(__name__)s \
-destemail = root@localhost \
-sender = root@localhost \
-mta = sendmail \
-protocol = tcp \
-chain = INPUT \
-port = 0:65535 \
-banaction = iptables-multiport \
-action_ = %(banaction)s[name=%(__name__)s, bantime="%(bantime)s", port="%(port)s", protocol="%(protocol)s", chain="%(chain)s"] \
-action_mw = %(banaction)s[name=%(__name__)s, bantime="%(bantime)s", port="%(port)s", protocol="%(protocol)s", chain="%(chain)s"] \
-            %(mta)s-whois[name=%(__name__)s, dest="%(destemail)s", protocol="%(protocol)s", chain="%(chain)s"] \
-action_mwl = %(banaction)s[name=%(__name__)s, bantime="%(bantime)s", port="%(port)s", protocol="%(protocol)s", chain="%(chain)s"] \
-             %(mta)s-whois-lines[name=%(__name__)s, dest="%(destemail)s", logpath=%(logpath)s, chain="%(chain)s"] \
-action_xarf = %(banaction)s[name=%(__name__)s, bantime="%(bantime)s", port="%(port)s", protocol="%(protocol)s", chain="%(chain)s"] \
-             xarf-login-attack[service=%(__name__)s, sender="%(sender)s", logpath=%(logpath)s, port="%(port)s"] \
-action_cf_mwl = cloudflare[cfuser="%(cfemail)s", cftoken="%(cfapikey)s" ] \
-                %(mta)s-whois-lines[name=%(__name__)s, dest="%(destemail)s", logpath=%(logpath)s, chain="%(chain)s"] \
-action_blocklist_de  = blocklist_de[email="%(sender)s", service=%(filter)s, apikey="%(blocklist_de_apikey)s"] \
-action_badips = badips.py[category="%(name)s", banaction="%(banaction)s"] \
-action = %(action_mwl)s \
-[sshd] \
-port    = 6666 \
-logpath = %(sshd_log)s \
-[sshd-ddos] \
-port    = ssh \
-logpath = %(sshd_log)s \
-[dropbear] \
-port     = ssh \
-logpath  = %(dropbear_log)s \
-[selinux-ssh] \
-port     = ssh \
-logpath  = %(auditd_log)s \
-maxretry = 5' > /etc/fail2ban/jail.local && \
-systemctl restart fail2ban.service
+ADD /config/jail.local /etc/fail2ban/
+RUN service fail2ban restart
 
 #harden the network by preventing souuce routing of incoming packets and log malformed IP's && prevent ip spoofing
 RUN echo "net.ipv4.conf.all.rp_filter = 1 \
@@ -141,51 +69,23 @@ RUN echo "order bind, hosts \
 nospoof on" > /etc/host.conf 
 
 #create the user u
-RUN adduser u --quiet --disabled-password --gecos "user"
-RUN echo "u:99rubies" | chpasswd
+RUN adduser u --quiet --disabled-password --gecos "user" && \
+echo "u:99rubies" | chpasswd && \
+usermod -aG sudo u
 
 #set up vnc and the vnc service
-RUN cat >startVNC.sh <<EOF \
-\#!/bin/sh \
-vncserver :1 -geometry 1024x768 -depth 16 -pixelformat rgb565 -localhost \
-EOF && \
-cat >stopVNC.sh <<EOF \
-\#!/bin/sh \
-vncserver -kill :1 \
-EOF && \
-chmod +x startVNC.sh && \
-chmod +x stopVNC.sh && \
-cd /etc/systemd/system && \
-cat >vnc.service <<EOF \
-[Unit] \
-Description=vnc \
-After=network.target \
-[Service] \
-Type=forking \
-User=u \
-ExecStart=/home/u/startVNC.sh \
-ExecStop=/home/u/stopVNC.sh \
-Restart=on-abort \
-[Install] \
-WantedBy=multi-user.target \
-EOF && \
-chmod +664 vnc.service \
-systemctl enable vnc.service && \
-screen -d -m -S vncpass && \
-screen -S vncpass -p 0 -X stuff "su u^M" && \
-screen -S vncpass -p 0 -X stuff "vncpasswd^M" && \
-screen -S vncpass -p 0 -X stuff "9rubies^M" && \
-screen -S vncpass -p 0 -X stuff "9rubies^M" && \
-screen -S vncpass -p 0 -X stuff "y^M" && \
-screen -S vncpass -p 0 -X stuff "8rubies^M" && \
-screen -S vncpass -p 0 -X stuff "8rubies^M" && \
-screen -S vncpass -p 0 -X stuff "exit^M" && \
-screen -S vncpass -p 0 -X stuff "exit^M" && \
-systemctl restart vnc.service
+ADD /script/*VNC.sh /home/u/
+ADD /config/vnc.service /etc/systemd/system/
+RUN chmod +x /home/u/*VNC.sh && \
+chmod +664 /etc/systemd/system/vnc.service && \
+systemctl enable vnc.service
+ADD /config/passwd /home/u/.vnc/
+RUN chown u /home/u/.vnc/passwd
+RUN systemctl start vnc.service
 
 #tests
 CMD java -version && \
 node -v && \
 sshd -h && \
 cowsay "hello" && \
-cat /etc/ssh/sshd_config | cowsay
+sat /etc/ssh/sshd_config | cowsay
