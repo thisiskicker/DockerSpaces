@@ -1,0 +1,15 @@
+[Unit]
+
+Description=vnc
+After=network.target
+
+[Service]
+Type=forking
+User=u
+ExecStart=/home/u/startVNC.sh
+ExecStop=/home/u/stopVNC.sh
+Restart=on-abort
+
+[Install]
+WantedBy=multi-user.target
+
