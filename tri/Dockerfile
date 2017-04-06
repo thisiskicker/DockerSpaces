@@ -81,8 +81,9 @@ chmod +664 /etc/systemd/system/vnc.service && \
 systemctl enable vnc.service
 ADD /config/passwd /home/u/.vnc/
 RUN chown u /home/u/.vnc/passwd
-RUN systemctl start vnc.service
-
+RUN touch /var/log/auth.log
+RUN service fail2ban restart
+ 
 #tests
 CMD java -version && \
 node -v && \
